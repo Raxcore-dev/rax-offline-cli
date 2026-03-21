@@ -37,12 +37,12 @@ install_from_apt() {
     
     # Add repository key
     echo "🔑 Adding repository key..."
-    curl -fsSL https://rax-cli.github.io/repo.key | \
+    curl -fsSL https://raxcore-dev.github.io/rax-offline-cli/repo.key | \
         sudo gpg --dearmor -o /usr/share/keyrings/rax-archive-keyring.gpg
     
     # Add repository
     echo "📂 Adding apt repository..."
-    echo "deb [signed-by=/usr/share/keyrings/rax-archive-keyring.gpg] https://rax-cli.github.io/ /" | \
+    echo "deb [signed-by=/usr/share/keyrings/rax-archive-keyring.gpg] https://raxcore-dev.github.io/rax-offline-cli/ /" | \
         sudo tee /etc/apt/sources.list.d/rax.list
     
     # Update and install
