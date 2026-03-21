@@ -1,0 +1,138 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  BINARY_NAME: rax
+
+jobs:
+  build:
+    name: Build Release
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-action@stable
+      with:
+        toolchain: stable
+
+    - name: Cache cargo
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libssl-dev pkg-config
+
+    - name: Build release binary
+      run: cargo build --release --verbose
+
+    - name: Run tests
+      run: cargo test --release --verbose
+
+    - name: Build .deb package
+      run: |
+        chmod +x build-deb.sh
+        ./build-deb.sh
+
+    - name: Upload binary artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rax-linux-amd64
+        path: target/release/rax
+        retention-days: 30
+
+    - name: Upload deb artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rax-deb-package
+        path: rax_*.deb
+        retention-days: 30
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Download binary artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: rax-linux-amd64
+        path: ./artifacts
+
+    - name: Download deb artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: rax-deb-package
+        path: ./artifacts
+
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        name: Release ${{ github.ref_name }}
+        draft: false
+        prerelease: false
+        files: |
+          ./artifacts/rax
+          ./artifacts/rax_*.deb
+        body: |
+          ## 🚀 Rax CLI ${{ github.ref_name }}
+          
+          ### Installation
+          
+          #### Option 1: Using apt (Recommended)
+          ```bash
+          # Add the repository
+          curl -fsSL https://rax-cli.github.io/repo.key | sudo gpg --dearmor -o /usr/share/keyrings/rax-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/rax-archive-keyring.gpg] https://rax-cli.github.io/ /" | sudo tee /etc/apt/sources.list.d/rax.list
+          sudo apt update
+          sudo apt install rax
+          ```
+          
+          #### Option 2: Direct download
+          ```bash
+          # Download and install the .deb package
+          wget https://github.com/rax-cli/rax-cli/releases/download/${{ github.ref_name }}/rax_*.deb
+          sudo apt install ./rax_*.deb
+          ```
+          
+          #### Option 3: Binary
+          ```bash
+          # Download and run directly
+          wget https://github.com/rax-cli/rax-cli/releases/download/${{ github.ref_name }}/rax
+          chmod +x rax
+          ./rax
+          ```
+          
+          ### What's New
+          - Automated build with GitHub Actions
+          - Official apt repository support
+          - Improved first-run experience
+          - Persistent chat history
+          
+          ### Features
+          - 🤖 Claude Code-style interface
+          - 💾 Auto-saving chat history
+          - 📁 Project context awareness
+          - 🎨 Beautiful TUI mode
+          - 🔒 100% offline AI

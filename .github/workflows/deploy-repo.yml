@@ -1,0 +1,78 @@
+name: Deploy apt Repository
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Download release assets
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        gh release download ${{ github.ref_name }} --pattern "*.deb" --dir ./repo/pool/main/r/rax/ || true
+        mkdir -p repo/pool/main/r/rax
+        # Get the .deb from artifacts if not in release
+        if [ ! -f repo/pool/main/r/rax/*.deb ]; then
+          curl -L -o repo/pool/main/r/rax/rax.deb "https://github.com/${{ github.repository }}/releases/latest/download/rax_*.deb" || true
+        fi
+
+    - name: Setup apt repository
+      run: |
+        mkdir -p repo/pool/main/r/rax
+        mkdir -p repo/dists/stable/main/binary-amd64
+        
+        # Copy any existing .deb files
+        find . -name "*.deb" -exec cp {} repo/pool/main/r/rax/ \; 2>/dev/null || true
+        
+        cd repo
+        
+        # Generate Packages file
+        if ls pool/main/r/rax/*.deb 1> /dev/null 2>&1; then
+          apt-ftparchive packages pool/main/r/rax/ > dists/stable/main/binary-amd64/Packages
+          gzip -c dists/stable/main/binary-amd64/Packages > dists/stable/main/binary-amd64/Packages.gz
+        fi
+        
+        # Generate Release file
+        cat > dists/stable/Release << 'EOF'
+Origin: Rax CLI
+Label: Rax CLI
+Suite: stable
+Version: 1.0
+Codename: stable
+Architectures: amd64
+Components: main
+Description: Rax CLI - Next-Gen Offline AI Assistant
+EOF
+        apt-ftparchive release dists/stable >> dists/stable/Release
+
+    - name: Setup Pages
+      uses: actions/configure-pages@v5
+
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: './repo'
+
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4

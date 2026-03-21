@@ -1,0 +1,12 @@
+/target
+*.deb
+repo/pool/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.log
+.local/
