@@ -663,14 +663,13 @@ fn run_interactive_tui(
                     Print(&msg[6..]),
                     Print("\n")
                 )?;
-            } else if msg.starts_with("rax: ") {
+            } else if let Some(content) = msg.strip_prefix("rax: ") {
                 execute!(
                     stdout,
                     SetForegroundColor(Color::Green),
                     Print("\n🤖 "),
                     ResetColor
                 )?;
-                let content = &msg[5..];
                 let width = 68;
                 for line in content.chars().collect::<Vec<_>>().chunks(width) {
                     execute!(
@@ -932,9 +931,7 @@ fn run_interactive_tui(
                             break;
                         }
                         KeyCode::Up => {
-                            if scroll_offset > 0 {
-                                scroll_offset -= 1;
-                            }
+                            scroll_offset = scroll_offset.saturating_sub(1);
                         }
                         KeyCode::Down => {
                             let max_scroll = messages.len().saturating_sub(available_lines);
