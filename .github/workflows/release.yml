@@ -103,8 +103,8 @@ jobs:
           #### Option 1: Using apt (Recommended)
           ```bash
           # Add the repository
-          curl -fsSL https://rax-cli.github.io/repo.key | sudo gpg --dearmor -o /usr/share/keyrings/rax-archive-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/rax-archive-keyring.gpg] https://rax-cli.github.io/ /" | sudo tee /etc/apt/sources.list.d/rax.list
+          curl -fsSL https://raxcore-dev.github.io/rax-offline-cli/repo.key | sudo gpg --dearmor -o /usr/share/keyrings/rax-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/rax-archive-keyring.gpg] https://raxcore-dev.github.io/rax-offline-cli/ /" | sudo tee /etc/apt/sources.list.d/rax.list
           sudo apt update
           sudo apt install rax
           ```
@@ -112,14 +112,14 @@ jobs:
           #### Option 2: Direct download
           ```bash
           # Download and install the .deb package
-          wget https://github.com/rax-cli/rax-cli/releases/download/${{ github.ref_name }}/rax_*.deb
+          wget https://github.com/Raxcore-dev/rax-offline-cli/releases/download/${{ github.ref_name }}/rax_*.deb
           sudo apt install ./rax_*.deb
           ```
           
           #### Option 3: Binary
           ```bash
           # Download and run directly
-          wget https://github.com/rax-cli/rax-cli/releases/download/${{ github.ref_name }}/rax
+          wget https://github.com/Raxcore-dev/rax-offline-cli/releases/download/${{ github.ref_name }}/rax
           chmod +x rax
           ./rax
           ```

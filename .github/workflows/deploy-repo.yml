@@ -33,7 +33,7 @@ jobs:
         mkdir -p repo/pool/main/r/rax
         # Get the .deb from artifacts if not in release
         if [ ! -f repo/pool/main/r/rax/*.deb ]; then
-          curl -L -o repo/pool/main/r/rax/rax.deb "https://github.com/${{ github.repository }}/releases/latest/download/rax_*.deb" || true
+          curl -L -o repo/pool/main/r/rax/rax.deb "https://github.com/Raxcore-dev/rax-offline-cli/releases/latest/download/rax_*.deb" || true
         fi
 
     - name: Setup apt repository

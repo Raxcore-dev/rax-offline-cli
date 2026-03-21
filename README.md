@@ -1,8 +1,8 @@
 # 🚀 Rax CLI - Next-Gen Offline AI
 
-[![CI](https://github.com/rax-cli/rax-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/rax-cli/rax-cli/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/rax-cli/rax-cli)](https://github.com/rax-cli/rax-cli/releases)
-[![License](https://img.shields.io/github/license/rax-cli/rax-cli)](LICENSE)
+[![CI](https://github.com/Raxcore-dev/rax-offline-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/Raxcore-dev/rax-offline-cli/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Raxcore-dev/rax-offline-cli)](https://github.com/Raxcore-dev/rax-offline-cli/releases)
+[![License](https://img.shields.io/github/license/Raxcore-dev/rax-offline-cli)](LICENSE)
 
 Fast, secure, and context-aware offline AI assistant powered by Llama 3.2.
 
@@ -21,11 +21,11 @@ Fast, secure, and context-aware offline AI assistant powered by Llama 3.2.
 
 ```bash
 # Add the repository key
-curl -fsSL https://rax-cli.github.io/repo.key | \
+curl -fsSL https://raxcore-dev.github.io/rax-offline-cli/repo.key | \
     sudo gpg --dearmor -o /usr/share/keyrings/rax-archive-keyring.gpg
 
 # Add the repository
-echo "deb [signed-by=/usr/share/keyrings/rax-archive-keyring.gpg] https://rax-cli.github.io/ /" | \
+echo "deb [signed-by=/usr/share/keyrings/rax-archive-keyring.gpg] https://raxcore-dev.github.io/rax-offline-cli/ /" | \
     sudo tee /etc/apt/sources.list.d/rax.list
 
 # Update and install
@@ -37,7 +37,7 @@ sudo apt install rax
 
 ```bash
 # Download the latest release
-wget https://github.com/rax-cli/rax-cli/releases/latest/download/rax_0.1.0_amd64.deb
+wget https://github.com/Raxcore-dev/rax-offline-cli/releases/latest/download/rax_0.1.0_amd64.deb
 
 # Install
 sudo apt install ./rax_0.1.0_amd64.deb
@@ -47,7 +47,7 @@ sudo apt install ./rax_0.1.0_amd64.deb
 
 ```bash
 # Download and run the installer
-curl -fsSL https://raw.githubusercontent.com/rax-cli/rax-cli/main/install-official.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Raxcore-dev/rax-offline-cli/main/install-official.sh | bash
 ```
 
 ### Option 4: Build from Source
@@ -267,6 +267,6 @@ Built with:
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/rax-cli/rax-cli/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/rax-cli/rax-cli/discussions)
-- **Documentation**: [Wiki](https://github.com/rax-cli/rax-cli/wiki)
+- **Issues**: [GitHub Issues](https://github.com/Raxcore-dev/rax-offline-cli/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/Raxcore-dev/rax-offline-cli/discussions)
+- **Documentation**: [Wiki](https://github.com/Raxcore-dev/rax-offline-cli/wiki)
