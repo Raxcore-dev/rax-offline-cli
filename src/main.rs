@@ -1,4 +1,11 @@
 use clap::Parser;
+use crossterm::{
+    event::{self, Event, KeyCode, KeyEventKind},
+    execute,
+    style::{Color, Print, ResetColor, SetForegroundColor},
+    terminal::Clear,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
 use directories::ProjectDirs;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use llama_cpp_2::context::params::LlamaContextParams;
@@ -8,22 +15,15 @@ use llama_cpp_2::model::params::LlamaModelParams;
 use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::token::data_array::LlamaTokenDataArray;
 use llama_cpp_2::token::LlamaToken;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
-use std::io::{self, Write, Read};
+use std::io::{self, Read, Write};
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
-use walkdir::WalkDir;
-use serde::{Deserialize, Serialize};
 use termimad::MadSkin;
-use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind},
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-    execute,
-    style::{Color, SetForegroundColor, Print, ResetColor},
-    terminal::Clear,
-};
-use std::collections::HashMap;
+use walkdir::WalkDir;
 
 const MODEL_URL: &str = "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf";
 const MODEL_FILENAME: &str = "Llama-3.2-1B-Instruct-Q4_K_M.gguf";
@@ -50,7 +50,11 @@ struct Args {
     context: bool,
 
     /// System prompt
-    #[arg(short = 's', long = "system", default_value = "You are Rax, a highly intelligent, concise, and proactive AI developer assistant. You provide expert guidance on software architecture, performance, and best practices. Always give high-signal, direct answers with beautifully formatted markdown.")]
+    #[arg(
+        short = 's',
+        long = "system",
+        default_value = "You are Rax, a highly intelligent, concise, and proactive AI developer assistant. You provide expert guidance on software architecture, performance, and best practices. Always give high-signal, direct answers with beautifully formatted markdown."
+    )]
     system: String,
 
     /// Force re-download the model
@@ -137,10 +141,10 @@ impl ChatStorage {
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
+
         let id = self.next_id;
         self.next_id += 1;
-        
+
         let session = ChatSession {
             id,
             name: format!("Chat #{}", id),
@@ -149,7 +153,7 @@ impl ChatStorage {
             messages: Vec::new(),
             system_prompt,
         };
-        
+
         self.sessions.insert(id, session);
         self.sessions.get_mut(&id).unwrap()
     }
@@ -170,8 +174,7 @@ impl ChatStorage {
 }
 
 fn get_project_dirs() -> ProjectDirs {
-    ProjectDirs::from("com", "RaxCore", "RaxCli")
-        .expect("Failed to get project directories")
+    ProjectDirs::from("com", "RaxCore", "RaxCli").expect("Failed to get project directories")
 }
 
 fn get_model_path() -> PathBuf {
@@ -304,19 +307,19 @@ fn format_timestamp(secs: u64) -> String {
 
 fn download_model_with_progress(model_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     println!();
-    
+
     let m = MultiProgress::new();
-    
+
     let spin_pb = m.add(ProgressBar::new_spinner());
     spin_pb.set_style(
         ProgressStyle::with_template("{spinner:.cyan} {msg}")
             .unwrap()
-            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
+            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
     );
     spin_pb.set_message("Connecting to model server...");
 
     let start = Instant::now();
-    
+
     let response = match ureq::get(MODEL_URL).timeout(Duration::from_secs(30)).call() {
         Ok(r) => r,
         Err(e) => {
@@ -324,13 +327,16 @@ fn download_model_with_progress(model_path: &PathBuf) -> Result<(), Box<dyn std:
             return Err(format!("Failed to connect: {}", e).into());
         }
     };
-    
+
     let total_size = response
         .header("Content-Length")
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(0);
 
-    spin_pb.set_message(format!("Starting download ({})...", format_bytes(total_size)));
+    spin_pb.set_message(format!(
+        "Starting download ({})...",
+        format_bytes(total_size)
+    ));
 
     let pb = m.add(ProgressBar::new(total_size));
     pb.set_style(
@@ -349,7 +355,7 @@ fn download_model_with_progress(model_path: &PathBuf) -> Result<(), Box<dyn std:
             return Err(format!("File creation failed: {}", e).into());
         }
     };
-    
+
     let mut buffer = vec![0u8; 65536];
     let mut downloaded: u64 = 0;
     let mut last_progress = Instant::now();
@@ -363,15 +369,15 @@ fn download_model_with_progress(model_path: &PathBuf) -> Result<(), Box<dyn std:
                 return Err(format!("Download failed: {}", e).into());
             }
         };
-        
+
         if let Err(e) = dest.write_all(&buffer[..n]) {
             pb.finish_with_message(format!("❌ Write error: {}", e));
             return Err(format!("Write failed: {}", e).into());
         }
-        
+
         downloaded += n as u64;
         pb.set_position(downloaded);
-        
+
         // Throttle UI updates for performance
         if last_progress.elapsed() > Duration::from_millis(100) {
             last_progress = Instant::now();
@@ -379,7 +385,7 @@ fn download_model_with_progress(model_path: &PathBuf) -> Result<(), Box<dyn std:
     }
 
     let elapsed = start.elapsed();
-    
+
     pb.finish_and_clear();
     spin_pb.finish_with_message(format!(
         "✅ Model downloaded successfully in {:.2}s ({})",
@@ -411,13 +417,13 @@ fn show_installation_wizard() -> Result<bool, Box<dyn std::error::Error>> {
     println!("  The model will be downloaded now.");
     println!("  This may take a few minutes depending on your connection.");
     println!();
-    
+
     print!("  Start download? [Y/n] ");
     io::stdout().flush()?;
-    
+
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
-    
+
     let confirm = input.trim().to_lowercase();
     if confirm.is_empty() || confirm == "y" || confirm == "yes" {
         Ok(true)
@@ -429,7 +435,7 @@ fn show_installation_wizard() -> Result<bool, Box<dyn std::error::Error>> {
 fn compute_file_hash(content: &str) -> String {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-    
+
     let mut hasher = DefaultHasher::new();
     content.hash(&mut hasher);
     format!("{:x}", hasher.finish())
@@ -441,13 +447,20 @@ fn load_context_with_cache() -> String {
     let mut count = 0;
     let mut modified_files = Vec::new();
 
-    for entry in WalkDir::new(".").max_depth(4).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(".")
+        .max_depth(4)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         let path = entry.path();
         if path.is_file() {
             let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-            let relevant_exts = ["rs", "py", "js", "ts", "md", "txt", "toml", "json", "c", "cpp", "h", "go", "sh", "yaml", "yml", "html", "css"];
+            let relevant_exts = [
+                "rs", "py", "js", "ts", "md", "txt", "toml", "json", "c", "cpp", "h", "go", "sh",
+                "yaml", "yml", "html", "css",
+            ];
 
-            if relevant_exts.contains(&extension) 
+            if relevant_exts.contains(&extension)
                 && !path.to_str().unwrap().contains("target/")
                 && !path.to_str().unwrap().contains("node_modules/")
                 && !path.to_str().unwrap().contains(".git/")
@@ -455,30 +468,47 @@ fn load_context_with_cache() -> String {
                 && !path.to_str().unwrap().contains("build/")
             {
                 let path_str = path.to_string_lossy().to_string();
-                
+
                 if let Ok(content) = fs::read_to_string(path) {
                     let current_hash = compute_file_hash(&content);
-                    let needs_update = cache.cached_content.get(&path_str)
+                    let needs_update = cache
+                        .cached_content
+                        .get(&path_str)
                         .map(|cached| compute_file_hash(cached) != current_hash)
                         .unwrap_or(true);
-                    
+
                     if needs_update {
-                        cache.cached_content.insert(path_str.clone(), content.clone());
-                        cache.file_hashes.insert(path_str.clone(), (current_hash, SystemTime::now()
-                            .duration_since(SystemTime::UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs()));
+                        cache
+                            .cached_content
+                            .insert(path_str.clone(), content.clone());
+                        cache.file_hashes.insert(
+                            path_str.clone(),
+                            (
+                                current_hash,
+                                SystemTime::now()
+                                    .duration_since(SystemTime::UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_secs(),
+                            ),
+                        );
                         modified_files.push(path_str.clone());
                     }
-                    
+
                     let cached_content = cache.cached_content.get(&path_str).unwrap_or(&content);
                     let truncated = if cached_content.len() > 4000 {
-                        format!("{}...(truncated)", &cached_content.chars().take(4000).collect::<String>())
+                        format!(
+                            "{}...(truncated)",
+                            &cached_content.chars().take(4000).collect::<String>()
+                        )
                     } else {
                         cached_content.clone()
                     };
-                    
-                    context_str.push_str(&format!("\n### {}\n```\n{}\n```\n", path.display(), truncated));
+
+                    context_str.push_str(&format!(
+                        "\n### {}\n```\n{}\n```\n",
+                        path.display(),
+                        truncated
+                    ));
                     count += 1;
                     if count >= 20 {
                         break;
@@ -487,13 +517,13 @@ fn load_context_with_cache() -> String {
             }
         }
     }
-    
+
     cache.save();
-    
+
     if !modified_files.is_empty() {
         println!("  📝 Context cached ({} files)", modified_files.len());
     }
-    
+
     context_str
 }
 
@@ -518,7 +548,7 @@ fn list_chats(storage: &ChatStorage) {
     println!("║              Saved Conversations                         ║");
     println!("╚══════════════════════════════════════════════════════════╝");
     println!();
-    
+
     let sessions = storage.list_sessions();
     if sessions.is_empty() {
         println!("  No saved conversations yet.");
@@ -532,9 +562,10 @@ fn list_chats(storage: &ChatStorage) {
             } else {
                 session.name.clone()
             };
-            println!("  {:<6} {:<30} {:<20} {}", 
-                session.id, 
-                name, 
+            println!(
+                "  {:<6} {:<30} {:<20} {}",
+                session.id,
+                name,
                 format_timestamp(session.updated_at),
                 session.messages.len()
             );
@@ -543,26 +574,34 @@ fn list_chats(storage: &ChatStorage) {
     println!();
 }
 
-fn export_chat_to_markdown(session: &ChatSession, filepath: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn export_chat_to_markdown(
+    session: &ChatSession,
+    filepath: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut content = format!("# {}\n\n", session.name);
-    content.push_str(&format!("*Created: {} | Messages: {}*\n\n", 
-        format_timestamp(session.created_at), 
+    content.push_str(&format!(
+        "*Created: {} | Messages: {}*\n\n",
+        format_timestamp(session.created_at),
         session.messages.len()
     ));
     content.push_str("---\n\n");
-    
+
     for msg in &session.messages {
-        let role = if msg.role == "user" { "💬 You" } else { "🤖 Rax" };
+        let role = if msg.role == "user" {
+            "💬 You"
+        } else {
+            "🤖 Rax"
+        };
         content.push_str(&format!("### {}\n\n{}\n\n---\n\n", role, msg.content));
     }
-    
+
     fs::write(filepath, content)?;
     Ok(())
 }
 
 fn run_interactive_tui(
-    model: &LlamaModel, 
-    ctx: &mut llama_cpp_2::context::LlamaContext, 
+    model: &LlamaModel,
+    ctx: &mut llama_cpp_2::context::LlamaContext,
     mut system_prompt: String,
     mut storage: ChatStorage,
     session_id: Option<usize>,
@@ -570,17 +609,19 @@ fn run_interactive_tui(
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
-    
+
     let mut messages: Vec<String> = Vec::new();
     let mut current_input = String::new();
     let mut scroll_offset = 0;
     let mut use_context = false;
     let mut current_session_id: Option<usize> = session_id;
-    
+
     // Load existing session or create new one
     if let Some(id) = session_id {
         if let Some(sess) = storage.get_session(id) {
-            messages = sess.messages.iter()
+            messages = sess
+                .messages
+                .iter()
                 .map(|m| format!("{}: {}", m.role, m.content))
                 .collect();
             system_prompt = sess.system_prompt.clone();
@@ -632,7 +673,12 @@ fn run_interactive_tui(
                 let content = &msg[5..];
                 let width = 68;
                 for line in content.chars().collect::<Vec<_>>().chunks(width) {
-                    execute!(stdout, Print("   "), Print(&String::from_iter(line.iter())), Print("\n"))?;
+                    execute!(
+                        stdout,
+                        Print("   "),
+                        Print(&String::from_iter(line.iter())),
+                        Print("\n")
+                    )?;
                 }
             } else {
                 execute!(stdout, Print("\n"), Print(msg), Print("\n"))?;
@@ -668,7 +714,8 @@ fn run_interactive_tui(
             Print("╯\n")
         )?;
 
-        let session_info = format!("Session #{} | Context: {} | /help for commands", 
+        let session_info = format!(
+            "Session #{} | Context: {} | /help for commands",
             current_session_id.unwrap_or(0),
             if use_context { "ON" } else { "OFF" }
         );
@@ -685,13 +732,15 @@ fn run_interactive_tui(
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
                     match key.code {
-                        KeyCode::Char('c') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
+                        KeyCode::Char('c')
+                            if key.modifiers.contains(event::KeyModifiers::CONTROL) =>
+                        {
                             break;
                         }
                         KeyCode::Enter => {
                             if !current_input.is_empty() {
                                 let input = current_input.clone();
-                                
+
                                 if input.starts_with('/') {
                                     match input.as_str() {
                                         "/help" => {
@@ -715,14 +764,21 @@ fn run_interactive_tui(
                                         "/context" => {
                                             use_context = !use_context;
                                             if use_context {
-                                                messages.push("rax: ✓ Context loading enabled".to_string());
+                                                messages.push(
+                                                    "rax: ✓ Context loading enabled".to_string(),
+                                                );
                                             } else {
-                                                messages.push("rax: ✗ Context loading disabled".to_string());
+                                                messages.push(
+                                                    "rax: ✗ Context loading disabled".to_string(),
+                                                );
                                             }
                                         }
                                         "/list" => {
                                             list_chats(&storage);
-                                            messages.push("rax: Use /load <id> to resume a conversation".to_string());
+                                            messages.push(
+                                                "rax: Use /load <id> to resume a conversation"
+                                                    .to_string(),
+                                            );
                                         }
                                         "/save" => {
                                             if let Some(id) = current_session_id {
@@ -730,7 +786,10 @@ fn run_interactive_tui(
                                                     let name = format!("Chat #{}", id);
                                                     sess.name = name.clone();
                                                     let _ = storage.save();
-                                                    messages.push(format!("rax: ✓ Saved as '{}'", name));
+                                                    messages.push(format!(
+                                                        "rax: ✓ Saved as '{}'",
+                                                        name
+                                                    ));
                                                 }
                                             }
                                         }
@@ -740,24 +799,40 @@ fn run_interactive_tui(
                                                     let name = input[6..].to_string();
                                                     sess.name = name.clone();
                                                     let _ = storage.save();
-                                                    messages.push(format!("rax: ✓ Saved as '{}'", name));
+                                                    messages.push(format!(
+                                                        "rax: ✓ Saved as '{}'",
+                                                        name
+                                                    ));
                                                 }
                                             }
                                         }
                                         cmd if cmd.starts_with("/load ") => {
                                             if let Ok(id) = input[6..].parse::<usize>() {
                                                 if let Some(sess) = storage.get_session(id) {
-                                                    messages = sess.messages.iter()
-                                                        .map(|m| format!("{}: {}", m.role, m.content))
+                                                    messages = sess
+                                                        .messages
+                                                        .iter()
+                                                        .map(|m| {
+                                                            format!("{}: {}", m.role, m.content)
+                                                        })
                                                         .collect();
                                                     system_prompt = sess.system_prompt.clone();
                                                     current_session_id = Some(id);
-                                                    messages.push(format!("rax: ✓ Loaded conversation #{}", id));
+                                                    messages.push(format!(
+                                                        "rax: ✓ Loaded conversation #{}",
+                                                        id
+                                                    ));
                                                 } else {
-                                                    messages.push(format!("rax: ✗ Conversation #{} not found", id));
+                                                    messages.push(format!(
+                                                        "rax: ✗ Conversation #{} not found",
+                                                        id
+                                                    ));
                                                 }
                                             } else {
-                                                messages.push("rax: ✗ Invalid ID. Use /load <number>".to_string());
+                                                messages.push(
+                                                    "rax: ✗ Invalid ID. Use /load <number>"
+                                                        .to_string(),
+                                                );
                                             }
                                         }
                                         cmd if cmd.starts_with("/export ") => {
@@ -765,22 +840,34 @@ fn run_interactive_tui(
                                                 if let Some(sess) = storage.get_session(id) {
                                                     let filepath = input[8..].trim();
                                                     match export_chat_to_markdown(sess, filepath) {
-                                                        Ok(_) => messages.push(format!("rax: ✓ Exported to '{}'", filepath)),
-                                                        Err(e) => messages.push(format!("rax: ✗ Export failed: {}", e)),
+                                                        Ok(_) => messages.push(format!(
+                                                            "rax: ✓ Exported to '{}'",
+                                                            filepath
+                                                        )),
+                                                        Err(e) => messages.push(format!(
+                                                            "rax: ✗ Export failed: {}",
+                                                            e
+                                                        )),
                                                     }
                                                 }
                                             }
                                         }
                                         "/system" => {
-                                            messages.push(format!("rax: Current system prompt:\n{}", system_prompt));
+                                            messages.push(format!(
+                                                "rax: Current system prompt:\n{}",
+                                                system_prompt
+                                            ));
                                         }
                                         _ => {
-                                            messages.push(format!("rax: Unknown command: {}. Type /help", input));
+                                            messages.push(format!(
+                                                "rax: Unknown command: {}. Type /help",
+                                                input
+                                            ));
                                         }
                                     }
                                 } else {
                                     messages.push(format!("user: {}", input));
-                                    
+
                                     let mut prompt = system_prompt.clone();
                                     if use_context {
                                         prompt.push_str(&load_context_with_cache());
@@ -799,9 +886,14 @@ fn run_interactive_tui(
                                     )?;
                                     stdout.flush()?;
 
-                                    let response = generate_response_streaming(model, ctx, &full_prompt, true)?;
+                                    let response = generate_response_streaming(
+                                        model,
+                                        ctx,
+                                        &full_prompt,
+                                        true,
+                                    )?;
                                     messages.push(format!("rax: {}", response));
-                                    
+
                                     // Save to session
                                     if let Some(id) = current_session_id {
                                         if let Some(sess) = storage.get_session(id) {
@@ -809,7 +901,7 @@ fn run_interactive_tui(
                                                 .duration_since(SystemTime::UNIX_EPOCH)
                                                 .unwrap()
                                                 .as_secs();
-                                            
+
                                             sess.messages.push(ChatMessage {
                                                 role: "user".to_string(),
                                                 content: input.clone(),
@@ -825,7 +917,7 @@ fn run_interactive_tui(
                                         }
                                     }
                                 }
-                                
+
                                 current_input.clear();
                                 scroll_offset = messages.len().saturating_sub(available_lines);
                             }
@@ -868,7 +960,8 @@ fn generate_response_streaming(
     prompt: &str,
     use_tui: bool,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let tokens_list = model.str_to_token(prompt, llama_cpp_2::model::AddBos::Always)
+    let tokens_list = model
+        .str_to_token(prompt, llama_cpp_2::model::AddBos::Always)
         .expect("Tokenization error");
     let mut batch = LlamaBatch::new(2048, 1);
 
@@ -893,12 +986,12 @@ fn generate_response_streaming(
 
         if let Ok(token_bytes) = model.token_to_piece_bytes(new_token_id, 0, false, None) {
             let token_str = String::from_utf8_lossy(&token_bytes).to_string();
-            
+
             if !use_tui {
                 print!("{}", token_str);
                 io::stdout().flush()?;
             }
-            
+
             full_response.push_str(&token_str);
         }
 
@@ -915,8 +1008,13 @@ fn generate_response_streaming(
     Ok(full_response)
 }
 
-fn generate_response(model: &LlamaModel, ctx: &mut llama_cpp_2::context::LlamaContext, prompt: &str) -> String {
-    let tokens_list = model.str_to_token(prompt, llama_cpp_2::model::AddBos::Always)
+fn generate_response(
+    model: &LlamaModel,
+    ctx: &mut llama_cpp_2::context::LlamaContext,
+    prompt: &str,
+) -> String {
+    let tokens_list = model
+        .str_to_token(prompt, llama_cpp_2::model::AddBos::Always)
         .expect("Tokenization error");
     let mut batch = LlamaBatch::new(2048, 1);
 
@@ -969,9 +1067,10 @@ fn run_interactive_cli(
     let new_session = storage.create_session(system_prompt.clone());
     let current_session_id = new_session.id;
 
-    let mut history = vec![
-        format!("<|start_header_id|>system<|end_header_id|>\n\n{}<|eot_id|>", system_prompt)
-    ];
+    let mut history = vec![format!(
+        "<|start_header_id|>system<|end_header_id|>\n\n{}<|eot_id|>",
+        system_prompt
+    )];
 
     loop {
         print!("\n{}", SetForegroundColor(Color::Cyan));
@@ -983,7 +1082,10 @@ fn run_interactive_cli(
         io::stdin().read_line(&mut input).unwrap();
         let input = input.trim();
 
-        if input.eq_ignore_ascii_case("quit") || input.eq_ignore_ascii_case("exit") || input == "/quit" {
+        if input.eq_ignore_ascii_case("quit")
+            || input.eq_ignore_ascii_case("exit")
+            || input == "/quit"
+        {
             println!("\n👋 Goodbye!\n");
             break;
         }
@@ -1000,17 +1102,24 @@ fn run_interactive_cli(
 
         if input == "/save" {
             if let Some(sess) = storage.get_session(current_session_id) {
-                println!("{}✓ Chat saved as '{}'", SetForegroundColor(Color::Green), sess.name);
+                println!(
+                    "{}✓ Chat saved as '{}'",
+                    SetForegroundColor(Color::Green),
+                    sess.name
+                );
                 print!("{}", ResetColor);
             }
             continue;
         }
 
         if input == "/clear" {
-            history = vec![
-                format!("<|start_header_id|>system<|end_header_id|>\n\n{}<|eot_id|>", 
-                    storage.get_session(current_session_id).map(|s| s.system_prompt.clone()).unwrap_or_default())
-            ];
+            history = vec![format!(
+                "<|start_header_id|>system<|end_header_id|>\n\n{}<|eot_id|>",
+                storage
+                    .get_session(current_session_id)
+                    .map(|s| s.system_prompt.clone())
+                    .unwrap_or_default()
+            )];
             if let Some(sess) = storage.get_session(current_session_id) {
                 sess.messages.clear();
                 let _ = storage.save();
@@ -1093,24 +1202,24 @@ fn main() {
     if args.uninstall {
         print!("🗑️  Removing downloaded model... ");
         io::stdout().flush().unwrap();
-        
+
         if model_path.exists() {
             if let Err(e) = fs::remove_file(&model_path) {
                 println!("❌ Failed: {}", e);
                 std::process::exit(1);
             }
         }
-        
+
         let config_path = get_config_path();
         if config_path.exists() {
             let _ = fs::remove_file(&config_path);
         }
-        
+
         let chat_path = get_chat_history_path();
         if chat_path.exists() {
             let _ = fs::remove_file(&chat_path);
         }
-        
+
         println!("✅ Uninstalled successfully");
         println!("   Run 'rax' again to reinstall");
         return;
@@ -1134,7 +1243,7 @@ fn main() {
                 if let Some(updated) = config.last_updated {
                     println!("   Last updated: {}", updated);
                 }
-                
+
                 // Show chat stats
                 let storage = ChatStorage::load();
                 let sessions = storage.list_sessions();
@@ -1194,17 +1303,17 @@ fn main() {
     print!("🧠 Loading model... ");
     io::stdout().flush().unwrap();
     let load_start = Instant::now();
-    
+
     let backend = LlamaBackend::init().unwrap();
     let model_params = LlamaModelParams::default();
     let model = LlamaModel::load_from_file(&backend, model_path.to_str().unwrap(), &model_params)
         .expect("Failed to load model");
-    
-    let ctx_params = LlamaContextParams::default()
-        .with_n_ctx(Some(NonZeroU32::new(8192).unwrap()));
-    let mut ctx = model.new_context(&backend, ctx_params)
+
+    let ctx_params = LlamaContextParams::default().with_n_ctx(Some(NonZeroU32::new(8192).unwrap()));
+    let mut ctx = model
+        .new_context(&backend, ctx_params)
         .expect("Failed to create context");
-    
+
     println!("✅ Ready ({:.2}s)", load_start.elapsed().as_secs_f64());
 
     let mut system_prompt = args.system.clone();
