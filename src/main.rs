@@ -320,11 +320,12 @@ fn download_model_with_progress(model_path: &PathBuf) -> Result<(), Box<dyn std:
 
     let start = Instant::now();
 
-    // Use 40 minute timeout for large files
-    let response = match ureq::get(MODEL_URL)
-        .timeout(Duration::from_secs(2400))
-        .call()
-    {
+    // Use ureq with no timeout - we handle timeouts ourselves
+    let agent = ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(0)) // Disable timeout - we read until EOF
+        .build();
+
+    let response = match agent.get(MODEL_URL).call() {
         Ok(r) => r,
         Err(e) => {
             spin_pb.finish_with_message(format!("❌ Connection failed: {}", e));
@@ -363,14 +364,11 @@ fn download_model_with_progress(model_path: &PathBuf) -> Result<(), Box<dyn std:
     let mut buffer = vec![0u8; 65536];
     let mut downloaded: u64 = 0;
     let mut last_progress = Instant::now();
-    let mut consecutive_errors = 0;
 
     loop {
         match reader.read(&mut buffer) {
             Ok(0) => break, // EOF - download complete
             Ok(n) => {
-                consecutive_errors = 0; // Reset error counter on successful read
-
                 if let Err(e) = dest.write_all(&buffer[..n]) {
                     pb.finish_with_message(format!("❌ Write error: {}", e));
                     return Err(format!("Write failed: {}", e).into());
@@ -384,35 +382,19 @@ fn download_model_with_progress(model_path: &PathBuf) -> Result<(), Box<dyn std:
                     last_progress = Instant::now();
                 }
             }
-            Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                consecutive_errors += 1;
-                if consecutive_errors >= 3 {
-                    pb.finish_with_message(format!("❌ Download timed out after 3 retries"));
-                    return Err(format!("Download timed out").into());
-                }
-                // Continue reading on timeout - might be transient
-                continue;
-            }
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
-                // Download completed but stream ended unexpectedly
-                // Check if we got all the data
+                // Stream ended - check if we got all data
                 if downloaded >= total_size {
-                    break; // We have all the data, consider it success
+                    break; // Success!
                 }
-                consecutive_errors += 1;
-                if consecutive_errors >= 3 {
-                    pb.finish_with_message(format!("❌ Download incomplete: {}", e));
-                    return Err(format!("Download incomplete: {}", e).into());
-                }
-                continue;
+                // Incomplete download
+                pb.finish_with_message(format!("❌ Download incomplete"));
+                return Err(format!("Download incomplete: expected {}, got {}", total_size, downloaded).into());
             }
             Err(e) => {
-                consecutive_errors += 1;
-                if consecutive_errors >= 3 {
-                    pb.finish_with_message(format!("❌ Download error: {}", e));
-                    return Err(format!("Download failed: {}", e).into());
-                }
-                continue;
+                // Other errors - could be timeout, network issue, etc.
+                pb.finish_with_message(format!("❌ Read error: {}", e));
+                return Err(format!("Read error: {}", e).into());
             }
         }
     }
