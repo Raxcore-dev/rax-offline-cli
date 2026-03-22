@@ -320,9 +320,9 @@ fn download_model_with_progress(model_path: &PathBuf) -> Result<(), Box<dyn std:
 
     let start = Instant::now();
 
-    // Use longer timeout for large files
+    // Use 40 minute timeout for large files
     let response = match ureq::get(MODEL_URL)
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_secs(2400))
         .call()
     {
         Ok(r) => r,
